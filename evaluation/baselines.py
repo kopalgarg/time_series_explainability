@@ -157,8 +157,8 @@ if __name__ == '__main__':
                 elif args.data=='mimic_int':
                     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0.0001)
                     if type(activation).__name__==type(torch.nn.Softmax(-1)).__name__: #suresh et al
-                        train_model_multiclass(model=model, train_loader=train_loader, valid_loader=test_loader, 
-                        optimizer=optimizer, n_epochs=50, device=device, experiment='model', data=args.data,num=5, 
+                        train_model_multiclass(model=model, train_loader=train_loader, valid_loader=test_loader,
+                        optimizer=optimizer, n_epochs=50, device=device, experiment='model', data=args.data,num=5,
                         loss_criterion=torch.nn.CrossEntropyLoss(weight=torch.FloatTensor(class_weight).to(device)),cv=args.cv)
                     else:
                         train_model_multiclass(model=model, train_loader=train_loader, valid_loader=test_loader,
@@ -312,8 +312,9 @@ if __name__ == '__main__':
         explainer_score = importance_scores.flatten()
         if args.explainer=='deep_lift' or args.explainer=='integrated_gradient' or args.explainer=='gradient_shap':
             explainer_score = np.abs(explainer_score)
-        auc_score = metrics.roc_auc_score(gt_score, explainer_score)
-        aupr_score = metrics.average_precision_score(gt_score, explainer_score)
-
+        #auc_score = metrics.roc_auc_score(gt_score, explainer_score)
+        #aupr_score = metrics.average_precision_score(gt_score, explainer_score)
+        gt_score
+        explainer_score
         _, median_rank, _= compute_median_rank(ranked_feats, gt_soft_score, soft=True,K=4)
-        print('auc:', auc_score, ' aupr:', aupr_score)
+        #print('auc:', auc_score, ' aupr:', aupr_score)
