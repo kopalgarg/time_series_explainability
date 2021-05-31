@@ -5,7 +5,8 @@ import numpy as np
 import seaborn as sns; sns.set()
 import pickle as pkl
 import time
-
+import sys
+sys.path.append('/Users/kopalgarg/Documents/GitHub/time_series_explainability/')
 from matplotlib import rc, rcParams
 rc('font', weight='bold')
 from matplotlib import rc, rcParams
@@ -16,14 +17,15 @@ from TSX.utils import load_simulated_data, train_model_rt, compute_median_rank, 
 from TSX.models import StateClassifier, RETAIN, EncoderRNN, ConvClassifier, StateClassifierMIMIC
 
 from TSX.generator import JointFeatureGenerator, JointDistributionGenerator
-from TSX.explainers import RETAINexplainer, FITExplainer, IGExplainer, FFCExplainer, \
+from TSX.explainers import RETAINexplainer, FITExplainer_all_historical, IGExplainer, FFCExplainer, \
     DeepLiftExplainer, GradientShapExplainer, AFOExplainer, FOExplainer, SHAPExplainer, \
-    LIMExplainer, CarryForwardExplainer, MeanImpExplainer
+    LIMExplainer, CarryForwardExplainer, MeanImpExplainer, FITExplainer_moving_window
 from sklearn import metrics
 
+# b FITExplainer_moving_window.attribute
 
-intervention_list = ['vent', 'vaso', 'adenosine', 'dobutamine', 'dopamine', 'epinephrine', 'isuprel', 'milrinone',
-                     'norepinephrine', 'phenylephrine', 'vasopressin', 'colloid_bolus', 'crystalloid_bolus', 'nivdurations']
+import pdb; pdb.set_trace()
+intervention_list = ['vent', 'vaso', 'adenosine', 'dobutamine', 'dopamine', 'epinephrine', 'isuprel', 'milrinone',  'norepinephrine', 'phenylephrine', 'vasopressin', 'colloid_bolus', 'crystalloid_bolus', 'nivdurations']
 intervention_list_plot = ['niv-vent', 'vent', 'vaso','other']
 feature_map_mimic = ['ANION GAP', 'ALBUMIN', 'BICARBONATE', 'BILIRUBIN', 'CREATININE', 'CHLORIDE', 'GLUCOSE',
                      'HEMATOCRIT', 'HEMOGLOBIN', 'LACTATE', 'MAGNESIUM', 'PHOSPHATE', 'PLATELET', 'POTASSIUM',
@@ -35,7 +37,6 @@ color_map = ['#7b85d4','#f37738', '#83c995', '#d7369e','#859795', '#ad5b50', '#7
              '#993F00', '#990000', '#990000', '#FFFF80', '#FF5005', '#FFFF00','#FF0010', '#FFCC99','#003380']
 
 ks = {'simulation_spike': 1, 'simulation': 3, 'simulation_l2x': 4}
-
 
 if __name__ == '__main__':
     np.random.seed(1234)
@@ -133,7 +134,7 @@ if __name__ == '__main__':
             if args.data=='mimic' or args.data=='simulation' or args.data=='simulation_l2x':
                 explainer.fit_model(train_loader, valid_loader, test_loader, lr=1e-3, plot=True, epochs=50)
             else:
-                explainer.fit_model(train_loader, valid_loader, test_loader, lr=1e-4, plot=True, epochs=100,cv=args.cv)
+                explainer.fit_model(train_loader, valid_loader, test_loader, lr=1e-4, plot=True, epochs=50,cv=args.cv)
             print('Total time required to train retain: ', time.time() - t0)
         else:
             model.load_state_dict(torch.load(os.path.join('./ckpt/%s/%s_%d.pt' % (args.data, 'retain', args.cv))))
@@ -152,7 +153,7 @@ if __name__ == '__main__':
                     train_model(model, train_loader, valid_loader, optimizer=optimizer, n_epochs=100,
                                 device=device, experiment='model',cv=args.cv)
                 elif 'simulation' in args.data:
-                    train_model_rt(model=model, train_loader=train_loader, valid_loader=valid_loader, optimizer=optimizer, n_epochs=50,
+                    train_model_rt(model=model, train_loader=train_loader, valid_loader=valid_loader, optimizer=optimizer, n_epochs=10,
                                device=device, experiment='model', data=args.data,cv=args.cv)
                 elif args.data=='mimic_int':
                     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0.0001)
@@ -184,22 +185,22 @@ if __name__ == '__main__':
                 generator = JointFeatureGenerator(feature_size, hidden_size=feature_size * 3, data=args.data)
                 if args.train:
                     if args.data=='mimic_int' or args.data=='simulation_spike':
-                        explainer = FITExplainer(model,activation=torch.nn.Sigmoid(),n_classes=n_classes)
+                        explainer = FITExplainer_moving_window(model,activation=torch.nn.Sigmoid(),n_classes=n_classes)
                     else:
-                        explainer = FITExplainer(model)
+                        explainer = FITExplainer_moving_window(model)
                     explainer.fit_generator(generator, train_loader, valid_loader,cv=args.cv)
                 else:
                     generator.load_state_dict(torch.load(os.path.join('./ckpt/%s/%s_%d.pt' % (args.data, 'joint_generator',args.cv))))
                     if args.data=='mimic_int' or args.data=='simulation_spike':
-                        explainer = FITExplainer(model, generator,activation=torch.nn.Sigmoid(),n_classes=n_classes)
+                        explainer = FITExplainer_moving_window(model, generator,activation=torch.nn.Sigmoid(),n_classes=n_classes)
                     else:
-                        explainer = FITExplainer(model, generator)
+                        explainer = FITExplainer_moving_window(model, generator)
             elif args.generator_type=='no_history':
                 generator = JointDistributionGenerator(n_components=5, train_loader=train_loader)
                 if args.data=='mimic_int' or args.data=='simulation_spike':
-                    explainer = FITExplainer(model, generator,activation=torch.nn.Sigmoid())
+                    explainer = FITExplainer_moving_window(model, generator,activation=torch.nn.Sigmoid())
                 else:
-                    explainer = FITExplainer(model, generator)
+                    explainer = FITExplainer_moving_window(model, generator)
 
         elif args.explainer == 'integrated_gradient':
             if args.data=='mimic_int' or args.data=='simulation_spike':
@@ -279,32 +280,31 @@ if __name__ == '__main__':
             gt_importance_test = pkl.load(f)
 
     importance_scores = []
-    ranked_feats=[]
+    ranked_features=[]
     n_samples = 1
     for x, y in test_loader:
         model.train()
         model.to(device)
         x = x.to(device)
         y = y.to(device)
-
+        _, n_features, t_len = x.shape
         t0 = time.time()
         score = explainer.attribute(x, y if args.data=='mimic' else y[:, -1].long())
-
-        ranked_features = np.array([((-(score[n])).argsort(0).argsort(0) + 1) \
-                                    for n in range(x.shape[0])])
+        ranked_feats = {}
+        for a in range(0, t_len):
+            ranked_feats["ranked_feats{0}".format(a+1)]= np.array([((-(score.get("score{0}".format(a+1))[n])).argsort(0).argsort(0) + 1) for n in range(x.shape[0])]) 
+            
         importance_scores.append(score)
-        ranked_feats.append(ranked_features)
+        ranked_features.append(ranked_feats)
 
-    importance_scores = np.concatenate(importance_scores, 0)
     print('Saving file to ', os.path.join(output_path, '%s_test_importance_scores_%d.pkl' % (args.explainer, args.cv)))
     with open(os.path.join(output_path, '%s_test_importance_scores_%d.pkl' % (args.explainer, args.cv)), 'wb') as f:
         pkl.dump(importance_scores, f, protocol=pkl.HIGHEST_PROTOCOL)
 
 
-    ranked_feats = np.concatenate(ranked_feats,0)
     with open(os.path.join(output_path, '%s_test_ranked_scores.pkl' % args.explainer), 'wb') as f:
-        pkl.dump(ranked_feats, f, protocol=pkl.HIGHEST_PROTOCOL)
-
+        pkl.dump(ranked_features, f, protocol=pkl.HIGHEST_PROTOCOL)
+'''
     if 'simulation' in args.data:
         gt_soft_score = np.zeros(gt_importance_test.shape)
         gt_importance_test.astype(int)
@@ -312,9 +312,8 @@ if __name__ == '__main__':
         explainer_score = importance_scores.flatten()
         if args.explainer=='deep_lift' or args.explainer=='integrated_gradient' or args.explainer=='gradient_shap':
             explainer_score = np.abs(explainer_score)
-        #auc_score = metrics.roc_auc_score(gt_score, explainer_score)
-        #aupr_score = metrics.average_precision_score(gt_score, explainer_score)
-        gt_score
-        explainer_score
+        auc_score = metrics.roc_auc_score(gt_score, explainer_score)
+        aupr_score = metrics.average_precision_score(gt_score, explainer_score)
         _, median_rank, _= compute_median_rank(ranked_feats, gt_soft_score, soft=True,K=4)
-        #print('auc:', auc_score, ' aupr:', aupr_score)
+        print('auc:', auc_score, ' aupr:', aupr_score)
+'''

@@ -807,6 +807,7 @@ def load_simulated_data(batch_size=100, datapath='./data/simulated_data', data_t
         valid_idx = range(n_train, len(x_train))
 
     train_dataset = utils.TensorDataset(torch.Tensor(x_train[train_idx, :, :]),
+
                                         torch.Tensor(y_train[train_idx, :]))
     valid_dataset = utils.TensorDataset(torch.Tensor(x_train[valid_idx, :, :]),
                                         torch.Tensor(y_train[valid_idx, :]))
