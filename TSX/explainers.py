@@ -33,6 +33,85 @@ def kl_multilabel(p1,p2,reduction='none'):
         total_kl[:,n] = torch.sum(kl,dim=1)
     return total_kl
 
+class FITExplainer:
+    def __init__(self, model, generator=None,activation=torch.nn.Softmax(-1),n_classes=2):
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.generator = generator
+        self.base_model = model.to(self.device)
+        self.activation = activation
+        self.n_classes=n_classes
+
+    def fit_generator(self, generator_model, train_loader, test_loader, n_epochs=300,cv=0):
+        train_joint_feature_generator(generator_model, train_loader, test_loader, generator_type='joint_generator',
+                                      n_epochs=300, lr=0.001, weight_decay=0,cv=cv)
+        self.generator = generator_model.to(self.device)
+
+    def attribute(self, x, y, n_samples=10, retrospective=False, distance_metric='kl',subsets=None):
+        """
+        Compute importance score for a sample x, over time and features
+        :param x: Sample instance to evaluate score for. Shape:[batch, features, time]
+        :param n_samples: number of Monte-Carlo samples
+        :return: Importance score matrix of shape:[batch, features, time]
+        """
+        self.generator.eval()
+        self.generator.to(self.device)
+        x = x.to(self.device)
+        _, n_features, t_len = x.shape
+        score = np.zeros(list(x.shape))
+        if retrospective:
+            p_y_t = self.activation(self.base_model(x))
+
+        for t in range(1, t_len):
+            if not retrospective:
+                
+                p_y_t = self.activation(self.base_model(x[:, :, :t+1]))
+                
+                p_tm1 = self.activation(self.base_model(x[:,:,0:t]))
+
+            for i in range(n_features):
+                x_hat = x[:,:,0:t+1].clone()
+                div_all=[]
+                t1_all=[]
+                t2_all=[]
+                for _ in range(n_samples):
+                    
+                    x_hat_t, _ = self.generator.forward_conditional(x[:, :, :t], x[:, :, t], [i]) #(past, current, sig_inds)
+                    
+                    x_hat[:, :, t] = x_hat_t
+                    
+                    y_hat_t = self.activation(self.base_model(x_hat))
+                    if distance_metric == 'kl':
+                        if type(self.activation).__name__==type(torch.nn.Softmax(-1)).__name__:
+                            div = torch.sum(torch.nn.KLDivLoss(reduction='none')(torch.log(p_tm1), p_y_t), -1) - \
+                             torch.sum(torch.nn.KLDivLoss(reduction='none')(torch.log(y_hat_t), p_y_t), -1)
+                            lhs = torch.sum(torch.nn.KLDivLoss(reduction='none')(torch.log(p_tm1), p_y_t), -1)
+                            rhs = torch.sum(torch.nn.KLDivLoss(reduction='none')(torch.log(y_hat_t), p_y_t), -1)
+                            # div = torch.where(rhs>lhs, torch.zeros(rhs.shape), rhs/lhs)
+                        else:
+                            t1 = kl_multilabel(p_y_t, p_tm1)
+                            t2 = kl_multilabel(p_y_t, y_hat_t)
+                            div,_ = torch.max(t1 - t2,dim=1)
+                            #div = div[:,0] #flatten
+                        div_all.append(div.cpu().detach().numpy())
+                    elif distance_metric == 'mean_divergence':
+                        div = torch.abs(y_hat_t - p_y_t)
+                        div_all.append(np.mean(div.detach().cpu().numpy(), -1))
+                    elif distance_metric=='LHS':
+                        div = torch.sum(torch.nn.KLDivLoss(reduction='none')(torch.log(p_tm1), p_y_t), -1)
+                        div_all.append(div.cpu().detach().numpy())
+                    elif distance_metric=='RHS':
+                        div = torch.sum(torch.nn.KLDivLoss(reduction='none')(torch.log(y_hat_t), p_y_t), -1)
+                        div_all.append(div.cpu().detach().numpy())
+                E_div = np.mean(np.array(div_all),axis=0)
+                if distance_metric =='kl':
+                    # score[:, i, t] = E_div
+                    score[:, i, t] = 2./(1+np.exp(-5*E_div)) - 1
+                elif distance_metric=='mean_divergence':
+                    score[:, i, t] = 1-E_div
+                else:
+                    score[:, i, t] = E_div
+        return score
+
 class FITExplainer_moving_window:
     def __init__(self, model, generator=None,activation=torch.nn.Softmax(-1),n_classes=2):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -51,8 +130,7 @@ class FITExplainer_moving_window:
         Compute importance score for a sample x, over time and features
         :param x: Sample instance to evaluate score for. Shape:[batch, features, time]
         :param n_samples: number of Monte-Carlo samples
-        :return: Importance score matrix of shape:[batch, features, time]
-        :return (Kopal): dict of length = time. Each time point contains scores for all features for past m points
+        :return: dict of length = time. Each time point contains scores for all features for past m points
         """
         self.generator.eval()
         self.generator.to(self.device)
@@ -60,124 +138,52 @@ class FITExplainer_moving_window:
         _, n_features, t_len = x.shape
         score = {}
         moving_window = 3
-        for m in range(0, t_len):
-            score["score{0}".format(m+1)]= score["score{0}".format(m+1)]= np.nan* np.ones(shape=(list(x.shape))) #np.zeros(list(x.shape))
+        for a in range(0, t_len):
+            score["score{0}".format(a+1)]= score["score{0}".format(a+1)]= np.nan* np.ones(shape=(list(x.shape))) #np.zeros(list(x.shape))
 
         if retrospective:
-            p_y_t = self.activation(self.base_model(x)) # same for all
+            p_y_t = self.activation(self.base_model(x)) 
 
-        p_tm ={} #(t_len, n_features, n_samples) = 80,3,10
+        p_tm ={} 
 
         for t in range(0, t_len): 
             if not retrospective:
-                p_y_t = self.activation(self.base_model(x[:, :, :t+1])) # same for all 
-                for m in range(max(t-moving_window,0),t):
-                    p_tm["p_tm{0}".format(m+1)] = self.activation(self.base_model(x[:,:,0:m+1])) #nu
-                    # p_tm1, p_tm2, ...
+                p_y_t = self.activation(self.base_model(x[:, :, :t+1])) 
+                for m in reversed(range(max(t-moving_window,0),t)):
+                    p_tm["p_tm{0}".format(m+1)] = self.activation(self.base_model(x[:,:,0:m+1])) 
+
             E_div ={}
             for i in range(n_features):
                 x_hat = {}
-                div_all = {} # div_all1,div_all2, ...
-                for m in range(max(t-moving_window,0),t):
+                div_all = {} 
+                for m in reversed(range(max(t-moving_window,0),t)):
                     x_hat["x_hat{0}".format(m+1)] = x[:,:,0:t+1].clone()
                     div_all["div_all{0}".format(m+1)] = []
                 for _ in range(n_samples):
                     x_hat_t = {}
                     y_hat_t = {}
                     div = {}
-                    for m in range(max(t-moving_window,0),t): # x_hat_t1, x_hat_t2, ...
-                        x_hat_t["x_hat_t{0}".format(m+1)],_ = self.generator.forward_conditional(x[:, :, :t-m], x[:, :, t-m], [i])
-                        x_hat.get("x_hat{0}".format(m+1))[:, :, t-m] = x_hat_t.get("x_hat_t{0}".format(m+1))
+                    for m in reversed(range(max(t-moving_window,0),t)): 
+                        x_hat_t["x_hat_t{0}".format(m+1)],_ = self.generator.forward_conditional(x[:, :, :m+1], x[:, :, m+1], [i])
+                        x_hat.get("x_hat{0}".format(m+1))[:, :, m+1] = x_hat_t.get("x_hat_t{0}".format(m+1))
                         y_hat_t["y_hat_t{0}".format(m+1)] = self.activation(self.base_model(x_hat.get("x_hat{0}".format(m+1))))
                     if distance_metric == 'kl':
                         if type(self.activation).__name__==type(torch.nn.Softmax(-1)).__name__:
-                            for m in range(max(t-moving_window,0),t):
+                            for m in reversed(range(max(t-moving_window,0),t)):
                                 div["div{0}".format(m+1)] = torch.sum(torch.nn.KLDivLoss(reduction='none')(torch.log(p_tm.get("p_tm{0}".format(m+1))), p_y_t), -1) - \
                              torch.sum(torch.nn.KLDivLoss(reduction='none')(torch.log(y_hat_t.get("y_hat_t{0}".format(m+1))), p_y_t), -1)
                         else:
-                            for m in range(max(t-moving_window,0),t):
+                            for m in reversed(range(max(t-moving_window,0),t)):
                                 t1 = kl_multilabel(p_y_t, p_tm.get("p_tm{0}".format(m+1)))
                                 t2 = kl_multilabel(p_y_t, y_hat_t.get("y_hat_t{0}".format(m+1)))
                                 div["div{0}".format(m+1)],_ = torch.max(t1 - t2,dim=1)
                                 div_all.get("div_all{0}".format(m+1)).append(div.get("div{0}".format(m+1)).cpu().detach().numpy())
 
-                for m in range(max(t-moving_window,0),t):
+                for m in reversed(range(max(t-moving_window,0),t)):
                     E_div["E_div{0}".format(m+1)] = np.mean(np.array(div_all.get("div_all{0}".format(m+1))), axis = 0)
-                    score.get("score{0}".format(t+1))[:, i, m] = 2./(1+np.exp(-5*E_div.get("E_div{0}".format(m+1))))-1 #nu 
+                    score.get("score{0}".format(t+1))[:, i, m] = 2./(1+np.exp(-5*E_div.get("E_div{0}".format(m+1))))-1 
                     # check: m+1 or m
 
-        return score
-
-class FITExplainer_all_historical:
-    def __init__(self, model, generator=None,activation=torch.nn.Softmax(-1),n_classes=2):
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.generator = generator
-        self.base_model = model.to(self.device)
-        self.activation = activation
-        self.n_classes=n_classes
-
-    def fit_generator(self, generator_model, train_loader, test_loader, n_epochs=100,cv=0):
-        train_joint_feature_generator(generator_model, train_loader, test_loader, generator_type='joint_generator',
-                                      n_epochs=100, lr=0.001, weight_decay=0,cv=cv)
-        self.generator = generator_model.to(self.device)
-
-    def attribute(self, x, y, n_samples=10, retrospective=False, distance_metric='kl',subsets=None):
-        """
-        Compute importance score for a sample x, over time and features
-        :param x: Sample instance to evaluate score for. Shape:[batch, features, time]
-        :param n_samples: number of Monte-Carlo samples
-        :return: Importance score matrix of shape:[batch, features, time]
-        :return (Kopal): dict of length = time. Each time point contains scores for all features for all past points
-        """
-        self.generator.eval()
-        self.generator.to(self.device)
-        x = x.to(self.device)
-        _, n_features, t_len = x.shape
-        score = {}
-        for a in range(0, t_len):
-            score["score{0}".format(a+1)]= np.nan* np.ones(shape=(list(x.shape))) #np.zeros(list(x.shape))
-
-        if retrospective:
-            p_y_t = self.activation(self.base_model(x)) # same for all
-
-        p_tm ={} #(t_len, n_features, n_samples) = 80,3,10
-
-        for t in range(0, t_len):
-            if not retrospective:
-                p_y_t = self.activation(self.base_model(x[:, :, :t+1])) # same for all
-                for m in range(0,t):
-                    p_tm["p_tm{0}".format(m+1)] = self.activation(self.base_model(x[:,:,0:m+1]))
-                    # p_tm1, p_tm2, ...
-            E_div ={}
-            for i in range(n_features):
-                x_hat = {}
-                div_all = {} # div_all1,div_all2, ...
-                for m in range(0,t):
-                    x_hat["x_hat{0}".format(m+1)] = x[:,:,0:t+1].clone()
-                    div_all["div_all{0}".format(m+1)] = []
-                for _ in range(n_samples):
-                    x_hat_t = {}
-                    y_hat_t = {}
-                    div = {}
-                    for m in range(0,t): # x_hat_t1, x_hat_t2, ...
-                        x_hat_t["x_hat_t{0}".format(m+1)],_ = self.generator.forward_conditional(x[:, :, :t-m], x[:, :, t-m], [i])
-                        x_hat.get("x_hat{0}".format(m+1))[:, :, t-m] = x_hat_t.get("x_hat_t{0}".format(m+1))
-                        y_hat_t["y_hat_t{0}".format(m+1)] = self.activation(self.base_model(x_hat.get("x_hat{0}".format(m+1))))
-                    if distance_metric == 'kl':
-                        if type(self.activation).__name__==type(torch.nn.Softmax(-1)).__name__:
-                            for m in range(0,t):
-                                div["div{0}".format(m+1)] = torch.sum(torch.nn.KLDivLoss(reduction='none')(torch.log(p_tm.get("p_tm{0}".format(m+1))), p_y_t), -1) - \
-                             torch.sum(torch.nn.KLDivLoss(reduction='none')(torch.log(y_hat_t.get("y_hat_t{0}".format(m+1))), p_y_t), -1)
-                        else:
-                            for m in range(0,t):
-                                t1 = kl_multilabel(p_y_t, p_tm.get("p_tm{0}".format(m+1)))
-                                t2 = kl_multilabel(p_y_t, y_hat_t.get("y_hat_t{0}".format(m+1)))
-                                div["div{0}".format(m+1)],_ = torch.max(t1 - t2,dim=1)
-                                div_all.get("div_all{0}".format(m+1)).append(div.get("div{0}".format(m+1)).cpu().detach().numpy())
-
-                for m in range(0,t):
-                    E_div["E_div{0}".format(m+1)] = np.mean(np.array(div_all.get("div_all{0}".format(m+1))), axis = 0)
-                    score.get("score{0}".format(t+1))[:, i, m] = 2./(1+np.exp(-5*E_div.get("E_div{0}".format(m+1))))-1 #score for position t+1 (where you're making the prediction)
         return score
 
 

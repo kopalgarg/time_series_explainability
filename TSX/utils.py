@@ -306,7 +306,6 @@ def train_model_rt(model, train_loader, valid_loader, optimizer, n_epochs, devic
     print('Training black-box model on ', data)
     train_loss_trend = []
     test_loss_trend = []
-
     model.to(device)
     loss_criterion = torch.nn.CrossEntropyLoss()
     for epoch in range(n_epochs):
@@ -326,7 +325,6 @@ def train_model_rt(model, train_loader, valid_loader, optimizer, n_epochs, devic
 
                 optimizer.zero_grad()
                 predictions = model(input_signal)
-
                 label_onehot = torch.zeros(predictions.shape).to(device)
                 pred_onehot = torch.zeros(predictions.shape).to(device)
                 _, predicted_label = predictions.max(1)
@@ -521,6 +519,11 @@ def test_model_rt(model, test_loader, num=1):
             test_loss += loss.item()
 
     test_loss = test_loss / ((i + 1) * num)
+    import pickle
+    def save_data(path,array):
+        with open(path,'wb') as f:
+            pickle.dump(array, f)
+    save_data('preds.pkl', predictions) 
     return test_loss, recall_test, precision_test, auc_test / ((i + 1) * num), correct_label_test
 
 def test_model_rt_binary(model,test_loader,num=1):

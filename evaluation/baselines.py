@@ -6,7 +6,7 @@ import seaborn as sns; sns.set()
 import pickle as pkl
 import time
 import sys
-sys.path.append('/Users/kopalgarg/Documents/GitHub/time_series_explainability/')
+# sys.path.append('/Users/kopalgarg/Documents/GitHub/time_series_explainability/')
 from matplotlib import rc, rcParams
 rc('font', weight='bold')
 from matplotlib import rc, rcParams
@@ -17,7 +17,7 @@ from TSX.utils import load_simulated_data, train_model_rt, compute_median_rank, 
 from TSX.models import StateClassifier, RETAIN, EncoderRNN, ConvClassifier, StateClassifierMIMIC
 
 from TSX.generator import JointFeatureGenerator, JointDistributionGenerator
-from TSX.explainers import RETAINexplainer, FITExplainer_all_historical, IGExplainer, FFCExplainer, \
+from TSX.explainers import RETAINexplainer, FITExplainer, IGExplainer, FFCExplainer, \
     DeepLiftExplainer, GradientShapExplainer, AFOExplainer, FOExplainer, SHAPExplainer, \
     LIMExplainer, CarryForwardExplainer, MeanImpExplainer, FITExplainer_moving_window
 from sklearn import metrics
@@ -115,7 +115,7 @@ if __name__ == '__main__':
         class_weight = p_data.pos_weight
     else:
         _, train_loader, valid_loader, test_loader = load_simulated_data(batch_size=batch_size, datapath=data_path,
-                                                                         percentage=0.8, data_type=data_type,cv=args.cv)
+                                                                         percentage=0.8, data_type=data_type, cv=args.cv)
 
     # Prepare model to explain
     if args.explainer == 'retain':
@@ -153,8 +153,11 @@ if __name__ == '__main__':
                     train_model(model, train_loader, valid_loader, optimizer=optimizer, n_epochs=100,
                                 device=device, experiment='model',cv=args.cv)
                 elif 'simulation' in args.data:
-                    train_model_rt(model=model, train_loader=train_loader, valid_loader=valid_loader, optimizer=optimizer, n_epochs=10,
+                    train_model_rt(model=model, train_loader=train_loader, valid_loader=valid_loader, optimizer=optimizer, n_epochs=100,
                                device=device, experiment='model', data=args.data,cv=args.cv)
+                elif 'wesad' in args.data:
+                    train_model_rt(model=model, train_loader=train_loader, valid_loader=valid_loader, optimizer=optimizer, n_epochs=100,
+                               device=device, experiment='model', data=args.data)
                 elif args.data=='mimic_int':
                     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0.0001)
                     if type(activation).__name__==type(torch.nn.Softmax(-1)).__name__: #suresh et al
@@ -289,10 +292,11 @@ if __name__ == '__main__':
         y = y.to(device)
         _, n_features, t_len = x.shape
         t0 = time.time()
+        moving_window = 3
         score = explainer.attribute(x, y if args.data=='mimic' else y[:, -1].long())
         ranked_feats = {}
-        for a in range(0, t_len):
-            ranked_feats["ranked_feats{0}".format(a+1)]= np.array([((-(score.get("score{0}".format(a+1))[n])).argsort(0).argsort(0) + 1) for n in range(x.shape[0])]) 
+        for t in range(0, t_len):
+            ranked_feats["ranked_feats{0}".format(t+1)]= np.array([((-(score.get("score{0}".format(t+1))[n])).argsort(0).argsort(0) + 1) for n in range(x.shape[0])]) 
             
         importance_scores.append(score)
         ranked_features.append(ranked_feats)
