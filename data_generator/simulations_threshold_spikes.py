@@ -39,7 +39,7 @@ plt.xlabel('Frequency [Hz]')
 plt.grid()
 
 
-def main(plot,n_samples,  Tt=24):
+def main(plot,n_samples,  Tt=100):
     signal_in = []
     thresholds = []
     trend_style=[]
@@ -269,7 +269,7 @@ def main(plot,n_samples,  Tt=24):
             plt.show()
     return x_train_n[:,:,:],y_train,x_test_n[:,:,:],y_test,thresholds_train,thresholds_test, ground_truth_imp_train_mat[:,:,:], ground_truth_imp_test_mat[:,:,:]
 
-def generate_sample(plot, Tt=24):
+def generate_sample(plot, Tt=100):
     trend_style='hill'
     noise = ts.noise.GaussianNoise(std=0.001)
     x1 = ts.signals.NARMA(order=2,coefficients=[.5,.5,1.5,.5],seed=random.seed())
@@ -308,7 +308,7 @@ def logistic(x):
 if __name__=='__main__':
     if not os.path.exists('./data'):
         os.mkdir('./data')
-    n_samples = 10 #3000
+    n_samples = 100 #3000
     x_train_n,y_train,x_test_n,y_test,thresholds_train,thresholds_test, gt_importance_train, gt_importance_test = main(n_samples=n_samples, plot=False)
     if not os.path.exists('./data/simulated_spike_data'):
         os.mkdir('./data/simulated_spike_data')
