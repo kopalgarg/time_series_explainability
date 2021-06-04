@@ -6,7 +6,7 @@ import seaborn as sns; sns.set()
 import pickle as pkl
 import time
 import sys
-# sys.path.append('/Users/kopalgarg/Documents/GitHub/time_series_explainability/')
+sys.path.append('/Users/kopalgarg/Documents/GitHub/time_series_explainability/')
 from matplotlib import rc, rcParams
 rc('font', weight='bold')
 from matplotlib import rc, rcParams
@@ -294,10 +294,10 @@ if __name__ == '__main__':
         t0 = time.time()
         moving_window = 3
         score = explainer.attribute(x, y if args.data=='mimic' else y[:, -1].long())
-        ranked_feats = {}
-        for t in range(0, t_len):
-            ranked_feats["ranked_feats{0}".format(t+1)]= np.array([((-(score.get("score{0}".format(t+1))[n])).argsort(0).argsort(0) + 1) for n in range(x.shape[0])]) 
-            
+        #ranked_feats = {}
+        #for t in range(0, t_len):
+        #    ranked_feats["ranked_feats{0}".format(t+1)]= np.array([((-(score.get("score{0}".format(t+1))[n])).argsort(0).argsort(0) + 1) for n in range(x.shape[0])]) 
+        ranked_feats = np.array([((-(score[n])).argsort(0).argsort(0) + 1) for n in range(x.shape[0])])
         importance_scores.append(score)
         ranked_features.append(ranked_feats)
 
