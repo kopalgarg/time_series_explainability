@@ -20,6 +20,13 @@ def butter_lowpass_filter(data, cutoff, fs, order=5):
     y = lfilter(b, a, data)
     return y
 
+def shift2(arr,num):
+    arr=np.roll(arr,num)
+    if num<0:
+         np.put(arr,range(len(arr)+num,len(arr)),0)
+    elif num > 0:
+         np.put(arr,range(num),0)
+    return arr
 # Filter requirements.
 order = 6
 fs = 30.0       # sample rate, Hz
@@ -171,6 +178,11 @@ def main(n_samples, plot, Tt=100):
     y_train = np.array(y_train)
     y_test = np.array(y_test)
 
+    for i in range(y_train.shape[0]):
+      y_train[i]=  shift2(y_train[i],10) #shift the outcome at t by 10 days 
+
+    for i in range(y_test.shape[0]):
+      y_test[i]=  shift2(y_test[i],10)
 
     ground_truth_importance_train = np.array(ground_truth_importance_train)
     ground_truth_importance_test = np.array(ground_truth_importance_test)
@@ -240,7 +252,7 @@ def logistic(x):
 if __name__=='__main__':
     if not os.path.exists('./data'):
         os.mkdir('./data')
-    n_samples = 500
+    n_samples = 100
     x_train_n,y_train,x_test_n,y_test,thresholds_train,thresholds_test, gt_importance_train, gt_importance_test = main(n_samples=n_samples, plot=False)
     if not os.path.exists('./data/simulated_spike_data'):
         os.mkdir('./data/simulated_spike_data')
