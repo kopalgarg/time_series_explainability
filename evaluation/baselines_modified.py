@@ -23,8 +23,7 @@ from TSX.explainers import RETAINexplainer, FITExplainer, IGExplainer, FFCExplai
     LIMExplainer, CarryForwardExplainer, MeanImpExplainer, FITExplainer_moving_window
 from sklearn import metrics
 
-intervention_list = ['vent', 'vaso', 'adenosine', 'dobutamine', 'dopamine', 'epinephrine', 'isuprel', 'milrinone',
-                     'norepinephrine', 'phenylephrine', 'vasopressin', 'colloid_bolus', 'crystalloid_bolus', 'nivdurations']
+intervention_list = ['vent', 'vaso', 'adenosine', 'dobutamine', 'dopamine', 'epinephrine', 'isuprel', 'milrinone',  'norepinephrine', 'phenylephrine', 'vasopressin', 'colloid_bolus', 'crystalloid_bolus', 'nivdurations']
 intervention_list_plot = ['niv-vent', 'vent', 'vaso','other']
 feature_map_mimic = ['ANION GAP', 'ALBUMIN', 'BICARBONATE', 'BILIRUBIN', 'CREATININE', 'CHLORIDE', 'GLUCOSE',
                      'HEMATOCRIT', 'HEMOGLOBIN', 'LACTATE', 'MAGNESIUM', 'PHOSPHATE', 'PLATELET', 'POTASSIUM',
@@ -36,7 +35,6 @@ color_map = ['#7b85d4','#f37738', '#83c995', '#d7369e','#859795', '#ad5b50', '#7
              '#993F00', '#990000', '#990000', '#FFFF80', '#FF5005', '#FFFF00','#FF0010', '#FFCC99','#003380']
 
 ks = {'simulation_spike': 1, 'simulation': 3, 'simulation_l2x': 4}
-
 
 if __name__ == '__main__':
     np.random.seed(1234)
@@ -54,7 +52,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     batch_size = 100
-    import pdb; pdb.set_trace()
     if not os.path.exists('./plots'):
         os.mkdir('./plots')
     if not os.path.exists('./ckpt'):
@@ -75,9 +72,14 @@ if __name__ == '__main__':
         data_path = './data/simulated_data_l2x'
         data_type='state'
         n_classes = 2
-    elif args.data == 'simulation_spike_data_delayed_outcome':
+    elif args.data == 'hrvavg_rmssd_deep':
+        feature_size = 8
+        data_path = './data/hrvavg_rmssd_deep'
+        data_type='spike'
+        n_classes = 2
+    elif args.data == 'simulation_spike':
         feature_size = 3
-        data_path = './data/simulation_spike_data_delayed_outcome' # './data/simulated_spike_data'
+        data_path = './data/simulated_spike_data'
         data_type='spike'
         n_classes = 2 # use with state-classifier
         if args.explainer=='retain':
@@ -116,7 +118,7 @@ if __name__ == '__main__':
         class_weight = p_data.pos_weight
     else:
         _, train_loader, valid_loader, test_loader = load_simulated_data(batch_size=batch_size, datapath=data_path,
-                                                                         percentage=0.8, data_type=data_type,cv=args.cv)
+                                                                         percentage=0.8, data_type=data_type, cv=args.cv)
 
     # Prepare model to explain
     if args.explainer == 'retain':
@@ -135,7 +137,7 @@ if __name__ == '__main__':
             if args.data=='mimic' or args.data=='simulation' or args.data=='simulation_l2x':
                 explainer.fit_model(train_loader, valid_loader, test_loader, lr=1e-3, plot=True, epochs=50)
             else:
-                explainer.fit_model(train_loader, valid_loader, test_loader, lr=1e-4, plot=True, epochs=100,cv=args.cv)
+                explainer.fit_model(train_loader, valid_loader, test_loader, lr=1e-4, plot=True, epochs=50,cv=args.cv)
             print('Total time required to train retain: ', time.time() - t0)
         else:
             model.load_state_dict(torch.load(os.path.join('./ckpt/%s/%s_%d.pt' % (args.data, 'retain', args.cv))))
@@ -154,13 +156,16 @@ if __name__ == '__main__':
                     train_model(model, train_loader, valid_loader, optimizer=optimizer, n_epochs=100,
                                 device=device, experiment='model',cv=args.cv)
                 elif 'simulation' in args.data:
-                    train_model_rt(model=model, train_loader=train_loader, valid_loader=valid_loader, optimizer=optimizer, n_epochs=50,
+                    train_model_rt(model=model, train_loader=train_loader, valid_loader=valid_loader, optimizer=optimizer, n_epochs=100,
                                device=device, experiment='model', data=args.data,cv=args.cv)
+                elif 'stressrecov' in args.data:
+                    train_model_rt(model=model, train_loader=train_loader, valid_loader=valid_loader, optimizer=optimizer, n_epochs=100,
+                               device=device, experiment='model', data=args.data)
                 elif args.data=='mimic_int':
                     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0.0001)
                     if type(activation).__name__==type(torch.nn.Softmax(-1)).__name__: #suresh et al
-                        train_model_multiclass(model=model, train_loader=train_loader, valid_loader=test_loader, 
-                        optimizer=optimizer, n_epochs=50, device=device, experiment='model', data=args.data,num=5, 
+                        train_model_multiclass(model=model, train_loader=train_loader, valid_loader=test_loader,
+                        optimizer=optimizer, n_epochs=50, device=device, experiment='model', data=args.data,num=5,
                         loss_criterion=torch.nn.CrossEntropyLoss(weight=torch.FloatTensor(class_weight).to(device)),cv=args.cv)
                     else:
                         train_model_multiclass(model=model, train_loader=train_loader, valid_loader=test_loader,
@@ -185,7 +190,7 @@ if __name__ == '__main__':
             if args.generator_type=='history':
                 generator = JointFeatureGenerator(feature_size, hidden_size=feature_size * 3, data=args.data)
                 if args.train:
-                    if args.data=='mimic_int' or args.data=='simulation_spike':
+                    if args.data=='mimic_int' or args.data=='simulation_spike' or args.data=='stressrecov':
                         explainer = FITExplainer(model,activation=torch.nn.Sigmoid(),n_classes=n_classes)
                     else:
                         explainer = FITExplainer(model)
@@ -222,7 +227,7 @@ if __name__ == '__main__':
                 explainer = FOExplainer(model)
 
         elif args.explainer == 'afo':
-            if args.data=='mimic_int' or args.data=='simulation_spike':
+            if args.data=='mimic_int' or args.data=='simulation_spike' or args.data=='stressrecov':
                 explainer = AFOExplainer(model, train_loader,activation=activation)
             else:
                 explainer = AFOExplainer(model, train_loader)
@@ -281,32 +286,32 @@ if __name__ == '__main__':
             gt_importance_test = pkl.load(f)
 
     importance_scores = []
-    ranked_feats=[]
+    ranked_features=[]
     n_samples = 1
     for x, y in test_loader:
         model.train()
         model.to(device)
         x = x.to(device)
         y = y.to(device)
-
+        _, n_features, t_len = x.shape
         t0 = time.time()
+        moving_window = 3
         score = explainer.attribute(x, y if args.data=='mimic' else y[:, -1].long())
-
-        ranked_features = np.array([((-(score[n])).argsort(0).argsort(0) + 1) \
-                                    for n in range(x.shape[0])])
+        #ranked_feats = {}
+        #for t in range(0, t_len):
+        #    ranked_feats["ranked_feats{0}".format(t+1)]= np.array([((-(score.get("score{0}".format(t+1))[n])).argsort(0).argsort(0) + 1) for n in range(x.shape[0])]) 
+        ranked_feats = np.array([((-(score[n])).argsort(0).argsort(0) + 1) for n in range(x.shape[0])])
         importance_scores.append(score)
-        ranked_feats.append(ranked_features)
+        ranked_features.append(ranked_feats)
 
-    importance_scores = np.concatenate(importance_scores, 0)
     print('Saving file to ', os.path.join(output_path, '%s_test_importance_scores_%d.pkl' % (args.explainer, args.cv)))
     with open(os.path.join(output_path, '%s_test_importance_scores_%d.pkl' % (args.explainer, args.cv)), 'wb') as f:
         pkl.dump(importance_scores, f, protocol=pkl.HIGHEST_PROTOCOL)
 
 
-    ranked_feats = np.concatenate(ranked_feats,0)
     with open(os.path.join(output_path, '%s_test_ranked_scores.pkl' % args.explainer), 'wb') as f:
-        pkl.dump(ranked_feats, f, protocol=pkl.HIGHEST_PROTOCOL)
-
+        pkl.dump(ranked_features, f, protocol=pkl.HIGHEST_PROTOCOL)
+    '''
     if 'simulation' in args.data:
         gt_soft_score = np.zeros(gt_importance_test.shape)
         gt_importance_test.astype(int)
@@ -316,6 +321,6 @@ if __name__ == '__main__':
             explainer_score = np.abs(explainer_score)
         auc_score = metrics.roc_auc_score(gt_score, explainer_score)
         aupr_score = metrics.average_precision_score(gt_score, explainer_score)
-
         _, median_rank, _= compute_median_rank(ranked_feats, gt_soft_score, soft=True,K=4)
         print('auc:', auc_score, ' aupr:', aupr_score)
+    '''
