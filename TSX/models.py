@@ -487,6 +487,12 @@ class EncoderRNN(nn.Module):
                                        nn.Dropout(0.5),
                                        nn.Linear(self.hidden_size, n_state))#,
                                        #nn.Sigmoid())
+        elif 'stressrecov' in data:
+            self.regressor = nn.Sequential(nn.BatchNorm1d(num_features=self.hidden_size),
+                                       nn.ReLU(),
+                                       nn.Dropout(0.5),
+                                       nn.Linear(self.hidden_size, n_state))#,
+                                       #nn.Sigmoid())
 
     def forward(self, input, past_state=None):
         input = input.permute(2, 0, 1).to(self.device)
