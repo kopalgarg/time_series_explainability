@@ -4,7 +4,6 @@ import os
 import sys
 import re
 
-# from TSX.generator import JointFeatureGenerator, train_joint_feature_generator, JointDistributionGenerator
 from TSX.utils import load_simulated_data, AverageMeter
 
 from sklearn.metrics import roc_auc_score, average_precision_score
@@ -55,6 +54,7 @@ class FITExplainer:
         """
         self.generator.eval()
         self.generator.to(self.device)
+        #import pdb; pdb.set_trace()
         x = x.to(self.device)
         _, n_features, t_len = x.shape
         score = np.zeros(list(x.shape))
@@ -71,8 +71,7 @@ class FITExplainer:
             for i in range(n_features):
                 x_hat = x[:,:,0:t+1].clone()
                 div_all=[]
-                t1_all=[]
-                t2_all=[]
+
                 for _ in range(n_samples):
                     
                     x_hat_t, _ = self.generator.forward_conditional(x[:, :, :t], x[:, :, t], [i]) #(past, current, sig_inds)

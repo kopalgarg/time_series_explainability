@@ -62,11 +62,14 @@ def evaluate_multiclass(labels, predicted_label, predicted_probability, task='mu
     prediction_array = predicted_label.detach().cpu().numpy() #one hot
     
     if task=='multiclass':
+        
         if len(np.unique(np.argmax(labels_array,1))) >= 2:
+            
             labels_array = labels_array[:,np.unique(np.argmax(labels_array,1))]
             prediction_array = prediction_array[:,np.unique(np.argmax(labels_array,1))]
-            predicted_probability = predicted_probability[:,np.unique(np.argmax(labels_array,1))] 
+            predicted_probability = predicted_probability[:,np.unique(np.argmax(labels_array,1))]
             predicted_probability = np.array(predicted_probability.detach().cpu())
+            
             auc_list = roc_auc_score(labels_array, predicted_probability, average=None)
             #print('macro auc:', auc_list)
             auc = np.mean(auc_list)
@@ -306,6 +309,7 @@ def train_model_rt(model, train_loader, valid_loader, optimizer, n_epochs, devic
     print('Training black-box model on ', data)
     train_loss_trend = []
     test_loss_trend = []
+
     model.to(device)
     loss_criterion = torch.nn.CrossEntropyLoss()
     for epoch in range(n_epochs):
@@ -325,6 +329,7 @@ def train_model_rt(model, train_loader, valid_loader, optimizer, n_epochs, devic
 
                 optimizer.zero_grad()
                 predictions = model(input_signal)
+
                 label_onehot = torch.zeros(predictions.shape).to(device)
                 pred_onehot = torch.zeros(predictions.shape).to(device)
                 _, predicted_label = predictions.max(1)
@@ -519,11 +524,6 @@ def test_model_rt(model, test_loader, num=1):
             test_loss += loss.item()
 
     test_loss = test_loss / ((i + 1) * num)
-    import pickle
-    def save_data(path,array):
-        with open(path,'wb') as f:
-            pickle.dump(array, f)
-    save_data('preds.pkl', predictions) 
     return test_loss, recall_test, precision_test, auc_test / ((i + 1) * num), correct_label_test
 
 def test_model_rt_binary(model,test_loader,num=1):
@@ -810,7 +810,6 @@ def load_simulated_data(batch_size=100, datapath='./data/simulated_data', data_t
         valid_idx = range(n_train, len(x_train))
 
     train_dataset = utils.TensorDataset(torch.Tensor(x_train[train_idx, :, :]),
-
                                         torch.Tensor(y_train[train_idx, :]))
     valid_dataset = utils.TensorDataset(torch.Tensor(x_train[valid_idx, :, :]),
                                         torch.Tensor(y_train[valid_idx, :]))
