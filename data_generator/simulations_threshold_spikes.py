@@ -240,7 +240,7 @@ def logistic(x):
 if __name__=='__main__':
     if not os.path.exists('./data'):
         os.mkdir('./data')
-    n_samples = 500
+    n_samples = 200
     x_train_n,y_train,x_test_n,y_test,thresholds_train,thresholds_test, gt_importance_train, gt_importance_test = main(n_samples=n_samples, plot=False)
     if not os.path.exists('./data/simulated_spike_data'):
         os.mkdir('./data/simulated_spike_data')
