@@ -159,7 +159,7 @@ def train(train_loader, model, device, optimizer, loss_criterion=torch.nn.CrossE
         labels = labels.view(labels.shape[0], )
         logits = model(signals)
         risks = torch.nn.Softmax(-1)(logits)[:,1]
-
+        
         label_onehot = torch.zeros(logits.shape).to(device)
         pred_onehot = torch.zeros(logits.shape).to(device)
         _, predicted_label = logits.max(1)
@@ -326,7 +326,7 @@ def train_model_rt(model, train_loader, valid_loader, optimizer, n_epochs, devic
             for t in time_points:
                 input_signal = signals[:, :, :t + 1]
                 label = labels[:, t]
-
+                
                 optimizer.zero_grad()
                 predictions = model(input_signal)
 
