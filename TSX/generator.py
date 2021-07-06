@@ -632,7 +632,7 @@ def test_joint_feature_generator(model, test_loader):
             # dist = OMTMultivariateNormal(mean, torch.cholesky(covariance))
             dist = MultivariateNormal(loc=mean, covariance_matrix=covariance)
             reconstruction_loss = -dist.log_prob(signals[:, :, t].to(device)).mean()
-            print(reconstruction_loss.item())
+            #print(reconstruction_loss.item())
             test_loss = test_loss + reconstruction_loss.item()
 
             # label = signals[:, :, t:t+model.prediction_size].contiguous().view(signals.shape[0], signals.shape[1])
