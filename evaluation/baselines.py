@@ -54,7 +54,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     batch_size = 100
-    import pdb; pdb.set_trace()
+    
     if not os.path.exists('./plots'):
         os.mkdir('./plots')
     if not os.path.exists('./ckpt'):
@@ -75,9 +75,9 @@ if __name__ == '__main__':
         data_path = './data/simulated_data_l2x'
         data_type='state'
         n_classes = 2
-    elif args.data == 'simulation_spike_data_delayed_outcome':
+    elif args.data == 'simulation_spike':
         feature_size = 3
-        data_path = './data/simulation_spike_data_delayed_outcome' # './data/simulated_spike_data'
+        data_path = './data/simulated_spike_data_modified' # './data/simulated_spike_data'
         data_type='spike'
         n_classes = 2 # use with state-classifier
         if args.explainer=='retain':
@@ -149,7 +149,7 @@ if __name__ == '__main__':
             model = EncoderRNN(feature_size=feature_size, hidden_size=50, regres=True, return_all=False, data=args.data, rnn="GRU")
         if args.train:
             if not args.binary:
-                optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-3)
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
                 if args.data=='mimic':
                     train_model(model, train_loader, valid_loader, optimizer=optimizer, n_epochs=100,
                                 device=device, experiment='model',cv=args.cv)
@@ -282,13 +282,13 @@ if __name__ == '__main__':
 
     importance_scores = []
     ranked_feats=[]
+    predicted_labels = []
     n_samples = 1
     for x, y in test_loader:
         model.train()
         model.to(device)
         x = x.to(device)
         y = y.to(device)
-
         t0 = time.time()
         score = explainer.attribute(x, y if args.data=='mimic' else y[:, -1].long())
 
@@ -296,12 +296,27 @@ if __name__ == '__main__':
                                     for n in range(x.shape[0])])
         importance_scores.append(score)
         ranked_feats.append(ranked_features)
+    
+    # predicted labels
+    for i, (signals, labels) in enumerate(test_loader):
+        signals, labels = signals.to(device), labels.to(device)
+    for t in range(signals.shape[2]):
+        input_signal = signals[:, :, :t + 1]
+        label = labels[:, t]
+        predictions = model(input_signal)
+        _, predicted_label = predictions.max(1)
+        arr_pred = [[i] for i in predicted_label]
+        if len(predicted_labels)==0:
+            predicted_labels = arr_pred
+        else:
+            predicted_labels = np.hstack((predicted_labels, arr_pred))
 
     importance_scores = np.concatenate(importance_scores, 0)
     print('Saving file to ', os.path.join(output_path, '%s_test_importance_scores_%d.pkl' % (args.explainer, args.cv)))
     with open(os.path.join(output_path, '%s_test_importance_scores_%d.pkl' % (args.explainer, args.cv)), 'wb') as f:
         pkl.dump(importance_scores, f, protocol=pkl.HIGHEST_PROTOCOL)
-
+    with open(os.path.join(output_path, '%s_predicted_labels_%d.pkl' % (args.explainer, args.cv)), 'wb') as f:
+        pkl.dump(predicted_labels, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     ranked_feats = np.concatenate(ranked_feats,0)
     with open(os.path.join(output_path, '%s_test_ranked_scores.pkl' % args.explainer), 'wb') as f:
