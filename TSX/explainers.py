@@ -54,13 +54,13 @@ class FITExplainer:
         """
         self.generator.eval()
         self.generator.to(self.device)
-        #import pdb; pdb.set_trace()
+        
         x = x.to(self.device)
         _, n_features, t_len = x.shape
         score = np.zeros(list(x.shape))
         if retrospective:
             p_y_t = self.activation(self.base_model(x))
-
+            
         for t in range(1, t_len):
             if not retrospective:
                 
@@ -103,8 +103,8 @@ class FITExplainer:
                         div_all.append(div.cpu().detach().numpy())
                 E_div = np.mean(np.array(div_all),axis=0)
                 if distance_metric =='kl':
-                    # score[:, i, t] = E_div
-                    score[:, i, t] = 2./(1+np.exp(-5*E_div)) - 1
+                    score[:, i, t] = 2./(1+np.exp(-1*E_div)) - 1
+                    #score[:, i, t] = 2./(1+np.exp(-5*E_div)) - 1
                 elif distance_metric=='mean_divergence':
                     score[:, i, t] = 1-E_div
                 else:
